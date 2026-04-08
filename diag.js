@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Diagnostic script — teste chaque étape de la chaîne de connexion.
+ * Diagnostic approfondi — teste CHAQUE hypothèse de manière isolée.
  * Usage: node diag.js
  */
 require('dotenv').config();
@@ -14,182 +14,231 @@ const ProxyManager = require('./src/proxy');
 const TARGET_URL = process.env.TARGET_URL || 'https://omegleweb.io';
 const WS_URL = process.env.WS_URL || 'wss://omegleweb.io:8443';
 
+function separator(title) {
+  console.log(`\n${'─'.repeat(60)}`);
+  console.log(`  ${title}`);
+  console.log(`${'─'.repeat(60)}`);
+}
+
 async function run() {
   const pm = new ProxyManager();
   const cf = new CfSolver();
 
-  console.log('\n=== ÉTAPE 1: Config proxy ===');
+  // ═══════════════════════════════════════════
+  // TEST 1: Config
+  // ═══════════════════════════════════════════
+  separator('TEST 1: Configuration');
   const proxy = pm.getSharedProxy();
-  if (!proxy) {
-    console.log('❌ Proxy NON configuré (GEONODE_USERNAME/PASSWORD manquants)');
-    return;
-  }
-  console.log(`✓ Proxy URL: ${proxy.url.replace(/:[^:]+@/, ':***@')}`);
-  console.log(`  Host: ${proxy.host}:${proxy.port}`);
-  console.log(`  User: ${proxy.username}`);
-  console.log(`  Session: ${proxy.sessionId}`);
+  console.log('Proxy shared:', proxy ? proxy.url.replace(/:[^:]+@/, ':***@') : 'NULL');
+  console.log('PORT env:', process.env.GEONODE_PORT);
+  console.log('SESSION_TYPE env:', process.env.GEONODE_SESSION_TYPE);
 
-  console.log('\n=== ÉTAPE 2: Test proxy (IP check) ===');
+  // ═══════════════════════════════════════════
+  // TEST 2: Proxy IP (port .env)
+  // ═══════════════════════════════════════════
+  separator('TEST 2: IP via proxy port ' + pm.port);
   try {
     const ip = await testProxyIP(proxy);
-    console.log(`✓ IP via proxy: ${ip}`);
+    console.log('✓', ip);
   } catch (e) {
-    console.log(`❌ Proxy inaccessible: ${e.message}`);
-    return;
+    console.log('✗', e.message);
   }
 
-  console.log('\n=== ÉTAPE 3: FlareSolverr health ===');
+  // ═══════════════════════════════════════════
+  // TEST 3: FlareSolverr
+  // ═══════════════════════════════════════════
+  separator('TEST 3: FlareSolverr health');
   const healthy = await cf.healthCheck();
-  console.log(healthy ? '✓ FlareSolverr OK' : '❌ FlareSolverr inaccessible');
+  console.log(healthy ? '✓ OK' : '✗ DOWN');
   if (!healthy) return;
 
-  console.log('\n=== ÉTAPE 4: FlareSolverr + proxy → cookies CF ===');
-  let cookies, userAgent;
+  // ═══════════════════════════════════════════
+  // TEST 4: FlareSolverr DIRECT → quels cookies exactement ?
+  // ═══════════════════════════════════════════
+  separator('TEST 4: FlareSolverr DIRECT (IP Hetzner)');
+  let directSol;
   try {
-    const solution = await cf.getSolution(TARGET_URL, proxy);
-    cookies = solution.cookies;
-    userAgent = solution.userAgent;
-    console.log(`✓ ${cookies.length} cookies obtenus`);
-    cookies.forEach(c => console.log(`  ${c.name} = ${c.value.substring(0, 30)}...`));
-    console.log(`  UA: ${userAgent.substring(0, 60)}...`);
+    directSol = await cf.getSolution(TARGET_URL, null);
+    console.log(`Status: ${directSol.status}`);
+    console.log(`Cookies (${directSol.cookies.length}):`);
+    directSol.cookies.forEach(c => console.log(`  ${c.name} = ${c.value.substring(0, 40)}...`));
+    console.log(`cf_clearance: ${directSol.cookies.some(c => c.name === 'cf_clearance') ? '✓ PRESENT' : '✗ ABSENT'}`);
+    const title = (directSol.response || '').match(/<title>(.*?)<\/title>/)?.[1] || 'N/A';
+    console.log(`Page title: "${title}"`);
+    console.log(`Challenge page: ${(directSol.response || '').includes('Just a moment') ? 'OUI ✗' : 'NON ✓'}`);
   } catch (e) {
-    console.log(`❌ FlareSolverr erreur: ${e.message}`);
-    return;
+    console.log('✗ Erreur:', e.message);
   }
 
-  const cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
-  const hasCfClearance = cookies.some(c => c.name === 'cf_clearance');
-  console.log(`  cf_clearance présent: ${hasCfClearance ? '✓' : '❌ MANQUANT'}`);
-
-  console.log('\n=== ÉTAPE 5: Connexion WS via proxy ===');
+  // ═══════════════════════════════════════════
+  // TEST 5: FlareSolverr + PROXY port .env
+  // ═══════════════════════════════════════════
+  separator('TEST 5: FlareSolverr + proxy (port ' + pm.port + ')');
+  let proxySol;
   try {
-    const agent = new HttpsProxyAgent(proxy.url);
-    const result = await testWsConnection(WS_URL, {
-      headers: {
-        'Cookie': cookieHeader,
-        'User-Agent': userAgent,
-        'Origin': TARGET_URL,
-        'Referer': `${TARGET_URL}/chat`,
-      },
-      agent,
-      handshakeTimeout: 15000,
-      rejectUnauthorized: false,
-    });
-    console.log(`✓ WS connecté ! Réponse: ${result}`);
+    proxySol = await cf.getSolution(TARGET_URL, proxy);
+    console.log(`Status: ${proxySol.status}`);
+    console.log(`Cookies (${proxySol.cookies.length}):`);
+    proxySol.cookies.forEach(c => console.log(`  ${c.name} = ${c.value.substring(0, 40)}...`));
+    console.log(`cf_clearance: ${proxySol.cookies.some(c => c.name === 'cf_clearance') ? '✓ PRESENT' : '✗ ABSENT'}`);
+    const title = (proxySol.response || '').match(/<title>(.*?)<\/title>/)?.[1] || 'N/A';
+    console.log(`Page title: "${title}"`);
+    console.log(`Challenge page: ${(proxySol.response || '').includes('Just a moment') ? 'OUI ✗' : 'NON ✓'}`);
   } catch (e) {
-    console.log(`❌ WS échoué: ${e.message}`);
+    console.log('✗ Erreur:', e.message);
+  }
 
-    // Test sans proxy pour comparer
-    console.log('\n=== ÉTAPE 5b: Connexion WS SANS proxy (comparaison) ===');
+  // ═══════════════════════════════════════════
+  // TEST 6: FlareSolverr + PROXY port 9000 (rotating)
+  // ═══════════════════════════════════════════
+  separator('TEST 6: FlareSolverr + proxy port 9000 (rotating)');
+  const user9000 = `geonode_${pm.username}-type-residential`;
+  const proxy9000 = {
+    url: `http://${encodeURIComponent(user9000)}:${encodeURIComponent(pm.password)}@${pm.host}:9000`,
+  };
+  let sol9000;
+  try {
+    const ip9000 = await testProxyIP({ url: proxy9000.url });
+    console.log('IP port 9000:', ip9000);
+    sol9000 = await cf.getSolution(TARGET_URL, proxy9000);
+    console.log(`Cookies (${sol9000.cookies.length}):`);
+    sol9000.cookies.forEach(c => console.log(`  ${c.name} = ${c.value.substring(0, 40)}...`));
+    console.log(`cf_clearance: ${sol9000.cookies.some(c => c.name === 'cf_clearance') ? '✓ PRESENT' : '✗ ABSENT'}`);
+    const title = (sol9000.response || '').match(/<title>(.*?)<\/title>/)?.[1] || 'N/A';
+    console.log(`Page title: "${title}"`);
+  } catch (e) {
+    console.log('✗ Erreur:', e.message.substring(0, 150));
+  }
+
+  // ═══════════════════════════════════════════
+  // TEST 7-10: WS avec différentes combinaisons cookies+proxy
+  // ═══════════════════════════════════════════
+  const scenarios = [];
+
+  if (directSol && directSol.cookies.length > 0) {
+    const ch = directSol.cookies.map(c => `${c.name}=${c.value}`).join('; ');
+    scenarios.push({ name: 'WS direct + cookies directs (même IP Hetzner)', cookieHeader: ch, ua: directSol.userAgent, agent: null });
+    if (proxy) {
+      scenarios.push({ name: 'WS via proxy + cookies directs (IP mismatch)', cookieHeader: ch, ua: directSol.userAgent, agent: new HttpsProxyAgent(proxy.url) });
+    }
+  }
+
+  if (proxySol && proxySol.cookies.length > 0) {
+    const ch = proxySol.cookies.map(c => `${c.name}=${c.value}`).join('; ');
+    if (proxy) {
+      scenarios.push({ name: 'WS via proxy + cookies proxy (même IP)', cookieHeader: ch, ua: proxySol.userAgent, agent: new HttpsProxyAgent(proxy.url) });
+    }
+    scenarios.push({ name: 'WS direct + cookies proxy (IP mismatch)', cookieHeader: ch, ua: proxySol.userAgent, agent: null });
+  }
+
+  if (sol9000 && sol9000.cookies.length > 0) {
+    const ch = sol9000.cookies.map(c => `${c.name}=${c.value}`).join('; ');
+    scenarios.push({ name: 'WS via port 9000 + cookies port 9000', cookieHeader: ch, ua: sol9000.userAgent, agent: new HttpsProxyAgent(proxy9000.url) });
+  }
+
+  // WS sans cookies (baseline)
+  scenarios.push({ name: 'WS sans cookies (baseline)', cookieHeader: '', ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', agent: null });
+
+  let testN = 7;
+  for (const s of scenarios) {
+    separator(`TEST ${testN}: ${s.name}`);
     try {
-      const result = await testWsConnection(WS_URL, {
+      const opts = {
         headers: {
-          'Cookie': cookieHeader,
-          'User-Agent': userAgent,
+          'User-Agent': s.ua,
           'Origin': TARGET_URL,
           'Referer': `${TARGET_URL}/chat`,
         },
         handshakeTimeout: 15000,
         rejectUnauthorized: false,
-      });
-      console.log(`✓ WS sans proxy connecté: ${result}`);
-      console.log('  → Le proxy bloque le WS tunnel sur port 8443');
-    } catch (e2) {
-      console.log(`❌ WS sans proxy aussi échoué: ${e2.message}`);
-      console.log('  → Problème de cookies ou IP CF');
-    }
+      };
+      if (s.cookieHeader) opts.headers['Cookie'] = s.cookieHeader;
+      if (s.agent) opts.agent = s.agent;
 
-    // Test FlareSolverr SANS proxy pour comparer
-    console.log('\n=== ÉTAPE 5c: FlareSolverr SANS proxy (comparaison) ===');
-    try {
-      const solution2 = await cf.getSolution(TARGET_URL, null);
-      const cookies2 = solution2.cookies;
-      const cookieHeader2 = cookies2.map(c => `${c.name}=${c.value}`).join('; ');
-      console.log(`  ${cookies2.length} cookies sans proxy`);
-
-      const result2 = await testWsConnection(WS_URL, {
-        headers: {
-          'Cookie': cookieHeader2,
-          'User-Agent': solution2.userAgent,
-          'Origin': TARGET_URL,
-          'Referer': `${TARGET_URL}/chat`,
-        },
-        handshakeTimeout: 15000,
-        rejectUnauthorized: false,
-      });
-      console.log(`✓ WS direct (sans proxy) connecté: ${result2}`);
-      console.log('  → IP Hetzner directe FONCTIONNE — le proxy est le problème');
-    } catch (e3) {
-      console.log(`❌ WS direct aussi échoué: ${e3.message}`);
-      console.log('  → CF bloque toutes les connexions WS depuis un datacenter');
+      const r = await testWsConnection(WS_URL, opts);
+      console.log('✓', r);
+    } catch (e) {
+      // Extraire le code HTTP si disponible
+      const m = e.message.match(/HTTP (\d+)/);
+      console.log(`✗ ${m ? 'HTTP ' + m[1] : e.message.substring(0, 120)}`);
     }
+    testN++;
   }
 
-  console.log('\n=== DIAGNOSTIC TERMINÉ ===\n');
+  // ═══════════════════════════════════════════
+  // RÉSUMÉ
+  // ═══════════════════════════════════════════
+  separator('RÉSUMÉ');
+  console.log(`
+  Scénarios possibles:
+
+  A) cf_clearance manquant dans les cookies
+     → Regarder TEST 4/5/6: est-ce que cf_clearance est PRESENT ?
+
+  B) IP mismatch (cookies liés à une IP, WS depuis autre IP)
+     → Comparer les tests WS "même IP" vs "IP mismatch"
+
+  C) TLS fingerprint Node.js ≠ Chrome (JA3 hash)
+     → Si TEST "même IP + mêmes cookies" échoue aussi = TLS issue
+     → Solution: utiliser un vrai browser (Puppeteer WS)
+
+  D) Proxy bloque le tunnel CONNECT vers port 8443
+     → Si port 9000 fonctionne mais pas port 10000 = port issue
+
+  E) omegleweb.io bloque TOUT WS non-browser
+     → Si AUCUN test ne passe = besoin d'un vrai browser
+
+  F) FlareSolverr ne résout pas CF via proxy
+     → 0 cookies = CF challenge non résolu via proxy
+  `);
 }
 
 function testProxyIP(proxy) {
   return new Promise((resolve, reject) => {
-    const proxyUrl = new URL(proxy.url);
-    const reqOptions = {
-      host: proxyUrl.hostname,
-      port: proxyUrl.port,
+    const url = new URL(proxy.url);
+    const req = http.get({
+      host: url.hostname, port: url.port,
       path: 'http://ip-api.com/json',
       headers: {
         'Proxy-Authorization': 'Basic ' + Buffer.from(
-          `${decodeURIComponent(proxyUrl.username)}:${decodeURIComponent(proxyUrl.password)}`
+          `${decodeURIComponent(url.username)}:${decodeURIComponent(url.password)}`
         ).toString('base64'),
       },
       timeout: 15000,
-    };
-
-    const req = http.get(reqOptions, (res) => {
-      let data = '';
-      res.on('data', d => data += d);
+    }, (res) => {
+      let d = '';
+      res.on('data', c => d += c);
       res.on('end', () => {
         try {
-          const json = JSON.parse(data);
-          resolve(`${json.query} (${json.country}, ${json.city}, ISP: ${json.isp})`);
-        } catch {
-          resolve(data.substring(0, 100));
-        }
+          const j = JSON.parse(d);
+          resolve(`${j.query} (${j.country}, ${j.city}, ${j.isp})`);
+        } catch { resolve(d.substring(0, 80)); }
       });
     });
     req.on('error', reject);
-    req.on('timeout', () => { req.destroy(); reject(new Error('Proxy timeout')); });
+    req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
   });
 }
 
 function testWsConnection(url, options) {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(url, options);
-    const timeout = setTimeout(() => {
-      ws.terminate();
-      reject(new Error('WS timeout (15s)'));
-    }, 15000);
-
+    const tm = setTimeout(() => { ws.terminate(); reject(new Error('timeout 15s')); }, 15000);
     ws.on('open', () => {
-      clearTimeout(timeout);
-      resolve('WebSocket OPEN');
-      // Écouter brièvement pour un message
+      clearTimeout(tm);
+      const msgs = [];
       ws.on('message', (raw) => {
-        console.log(`  WS msg reçu: ${raw.toString().substring(0, 100)}`);
+        msgs.push(raw.toString().substring(0, 80));
+        if (msgs.length >= 3) { ws.close(); resolve('OPEN + ' + msgs.join(' | ')); }
       });
-      setTimeout(() => ws.close(), 3000);
+      setTimeout(() => { ws.close(); resolve('OPEN' + (msgs.length ? ' + ' + msgs.join(' | ') : '')); }, 3000);
     });
-
-    ws.on('error', (err) => {
-      clearTimeout(timeout);
-      reject(err);
-    });
-
+    ws.on('error', (err) => { clearTimeout(tm); reject(err); });
     ws.on('unexpected-response', (req, res) => {
-      clearTimeout(timeout);
+      clearTimeout(tm);
       let body = '';
       res.on('data', d => body += d);
-      res.on('end', () => {
-        reject(new Error(`HTTP ${res.statusCode}: ${body.substring(0, 200)}`));
-      });
+      res.on('end', () => reject(new Error(`HTTP ${res.statusCode}: ${body.substring(0, 120)}`)));
     });
   });
 }
