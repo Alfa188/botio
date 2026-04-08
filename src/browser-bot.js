@@ -114,6 +114,7 @@ class BrowserBot {
       '--disable-setuid-sandbox',
       '--disable-blink-features=AutomationControlled',
       '--disable-dev-shm-usage',
+      '--disable-gpu',
       '--window-size=1280,800',
     ];
 
@@ -123,7 +124,7 @@ class BrowserBot {
     }
 
     this.browser = await puppeteer.launch({
-      headless: 'new',
+      headless: false,
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
       args: launchArgs,
       defaultViewport: { width: 1280, height: 800 },
