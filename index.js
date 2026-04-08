@@ -72,6 +72,7 @@ async function main() {
     const WsBot = require('./src/ws-client');
     const cookiePool = require('./src/cookie-pool');
     const CfSolver = require('./src/cf-solver');
+    const ProxyManager = require('./src/proxy');
 
     logger.info(`Démarrage de ${numWorkers} bot(s) WebSocket en parallèle...`);
 
@@ -83,8 +84,17 @@ async function main() {
       process.exit(1);
     }
 
+    // Utiliser le proxy partagé pour que cf_clearance soit lié à l'IP résidentielle
+    const proxyManager = new ProxyManager();
+    const sharedProxy = proxyManager.getSharedProxy();
+    if (sharedProxy) {
+      logger.info(`Proxy Geonode: ${sharedProxy.host}:${sharedProxy.port} [session: ${sharedProxy.sessionId}]`);
+    } else {
+      logger.warn('Aucun proxy configuré — connexion directe (risque de blocage datacenter)');
+    }
+
     logger.info('Récupération des cookies CF (partagés entre tous les bots)...');
-    const { cookieHeader } = await cookiePool.get(cfSolver, config.targetUrl);
+    const { cookieHeader } = await cookiePool.get(cfSolver, config.targetUrl, sharedProxy);
     logger.info(`CF résolu ✓ — Lancement de ${numWorkers} bot(s)...`);
 
     // Set partagé pour détecter les auto-matchs bot-à-bot

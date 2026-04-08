@@ -126,6 +126,7 @@ class WsBot {
     // Pool partagé — une seule résolution FlareSolverr même pour N bots simultanés
     // Le proxy partagé garantit que cf_clearance et les WS ont la même IP (résidentielle)
     const sharedProxy = this.proxyManager.getSharedProxy();
+    logger.info(`Proxy: ${sharedProxy ? `${sharedProxy.host}:${sharedProxy.port}` : 'AUCUN (direct)'}`);
     const { cookieHeader, userAgent } = await cookiePool.get(
       this.cfSolver, this.config.targetUrl, sharedProxy
     );
@@ -133,7 +134,7 @@ class WsBot {
 
     this.cookieHeader = cookieHeader;
     this.userAgent = userAgent || this.userAgent;
-    logger.debug(`Cookie header: ${this.cookieHeader.substring(0, 80)}...`);
+    logger.info(`Cookies: ${this.cookieHeader.substring(0, 60)}...`);
   }
 
   // ─────────────────────────────────────────────
@@ -161,7 +162,10 @@ class WsBot {
 
       // Proxy résidentiel Geonode — masque l'IP datacenter Hetzner
       if (this._sharedProxy) {
+        logger.info(`WS via proxy ${this._sharedProxy.host}:${this._sharedProxy.port}`);
         wsOptions.agent = new HttpsProxyAgent(this._sharedProxy.url);
+      } else {
+        logger.warn('WS SANS proxy — connexion directe');
       }
 
       this.ws = new WebSocket(this.config.wsUrl, wsOptions);
