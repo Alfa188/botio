@@ -37,9 +37,10 @@ async function main() {
 ╠═══════════════════════════════════════════════════════════╣
 ║                                                           ║
 ║  MODES :                                                  ║
-║    node index.js --ws           Bot WebSocket (RECOMMANDÉ)║
-║    node index.js --ws --workers 5  5 bots en parallèle   ║
-║    node index.js                Bot Puppeteer (legacy)    ║
+║    node index.js --browser      Bot Browser (RECOMMANDÉ)  ║
+║    node index.js --browser --workers 3  3 bots parallèle ║
+║    node index.js --ws           Bot WebSocket (legacy)    ║
+║    node index.js                Bot Puppeteer DOM (legacy) ║
 ║    node index.js --discover     Analyse DOM (CF+Cheerio)  ║
 ║    node index.js --deep-discover Analyse DOM Puppeteer    ║
 ║    node index.js --help         Cette aide                ║
@@ -63,7 +64,46 @@ async function main() {
     return;
   }
 
-  // ─── Mode WebSocket (recommandé) ───
+  // ─── Mode Browser (RECOMMANDÉ) — Puppeteer stealth + WS intercept ───
+  if (args.includes('--browser')) {
+    const workersIdx = args.indexOf('--workers');
+    const numWorkers = workersIdx >= 0 ? Math.max(1, parseInt(args[workersIdx + 1]) || 1) : 1;
+
+    const BrowserBot = require('./src/browser-bot');
+
+    logger.info(`Démarrage de ${numWorkers} bot(s) Browser (Puppeteer stealth)...`);
+    logger.info(`⚠ Chaque bot lance un Chrome headless (~150-250 MB RAM)`);
+
+    const sharedMatchIds = new Set();
+
+    const bots = Array.from({ length: numWorkers }, (_, i) => {
+      const botConfig = {
+        ...config,
+        maxConversations: Math.ceil(config.maxConversations / numWorkers),
+      };
+      const bot = new BrowserBot(botConfig, sharedMatchIds, i);
+      const startDelay = i * 8000; // 8s entre chaque bot (temps de lancement Chrome + CF)
+      return new Promise(resolve => setTimeout(resolve, startDelay))
+        .then(() => {
+          logger.info(`Browser Bot #${i + 1} démarré`);
+          return bot.run();
+        })
+        .catch(err => logger.error(`Browser Bot #${i + 1} erreur: ${err.message}`));
+    });
+
+    const gracefulShutdown = () => {
+      logger.info('Signal d\'arrêt reçu...');
+      setTimeout(() => process.exit(0), 5000);
+    };
+    process.on('SIGINT', gracefulShutdown);
+    process.on('SIGTERM', gracefulShutdown);
+
+    await Promise.allSettled(bots);
+    logger.info('Tous les bots terminés.');
+    return;
+  }
+
+  // ─── Mode WebSocket (legacy — bloqué par CF fingerprinting) ───
   if (args.includes('--ws')) {
     // Nombre de bots parallèles : --workers N (défaut 1)
     const workersIdx = args.indexOf('--workers');
