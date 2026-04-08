@@ -32,6 +32,7 @@
  */
 
 const WebSocket = require('ws');
+const { HttpsProxyAgent } = require('https-proxy-agent');
 const logger = require('./logger');
 const CfSolver = require('./cf-solver');
 const ProxyManager = require('./proxy');
@@ -123,9 +124,12 @@ class WsBot {
     }
 
     // Pool partagé — une seule résolution FlareSolverr même pour N bots simultanés
+    // Le proxy partagé garantit que cf_clearance et les WS ont la même IP (résidentielle)
+    const sharedProxy = this.proxyManager.getSharedProxy();
     const { cookieHeader, userAgent } = await cookiePool.get(
-      this.cfSolver, this.config.targetUrl
+      this.cfSolver, this.config.targetUrl, sharedProxy
     );
+    this._sharedProxy = sharedProxy;
 
     this.cookieHeader = cookieHeader;
     this.userAgent = userAgent || this.userAgent;
@@ -154,6 +158,11 @@ class WsBot {
         handshakeTimeout: 15000,
         rejectUnauthorized: false,
       };
+
+      // Proxy résidentiel Geonode — masque l'IP datacenter Hetzner
+      if (this._sharedProxy) {
+        wsOptions.agent = new HttpsProxyAgent(this._sharedProxy.url);
+      }
 
       this.ws = new WebSocket(this.config.wsUrl, wsOptions);
       this.wsReady = false;

@@ -38,8 +38,9 @@ class CookiePool {
    *
    * @param {CfSolver} cfSolver
    * @param {string} targetUrl
+   * @param {object|null} proxy - { url: 'http://user:pass@host:port' }
    */
-  async get(cfSolver, targetUrl) {
+  async get(cfSolver, targetUrl, proxy = null) {
     // 1. Cache mémoire
     if (this._cache && Date.now() < this._cache.expiresAt) {
       logger.debug('CookiePool: hit mémoire');
@@ -60,7 +61,7 @@ class CookiePool {
       return this._pending;
     }
 
-    this._pending = this._resolve(cfSolver, targetUrl)
+    this._pending = this._resolve(cfSolver, targetUrl, proxy)
       .finally(() => { this._pending = null; });
 
     return this._pending;
@@ -78,9 +79,9 @@ class CookiePool {
   /**
    * Résout les cookies via FlareSolverr et met à jour le cache.
    */
-  async _resolve(cfSolver, targetUrl) {
+  async _resolve(cfSolver, targetUrl, proxy = null) {
     logger.info('CookiePool: résolution CF via FlareSolverr...');
-    const solution = await cfSolver.getSolution(targetUrl);
+    const solution = await cfSolver.getSolution(targetUrl, proxy);
 
     if (!solution.cookies || solution.cookies.length === 0) {
       logger.warn('CookiePool: 0 cookies retournés par FlareSolverr');

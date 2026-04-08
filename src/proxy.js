@@ -78,6 +78,24 @@ class ProxyManager {
     };
   }
 
+  /**
+   * Retourne une config proxy avec session fixe partagée entre tous les bots.
+   * Tous les bots (et FlareSolverr) utilisent le même exit IP Geonode.
+   * Critique pour que cf_clearance et les connexions WS aient la même IP.
+   */
+  getSharedProxy() {
+    if (!this.username || !this.password) return null;
+    const user = `geonode_${this.username}-session-botio-shared-0-country-${this.country}`;
+    return {
+      url: `http://${encodeURIComponent(user)}:${encodeURIComponent(this.password)}@${this.host}:${this.port}`,
+      host: this.host,
+      port: parseInt(this.port),
+      username: user,
+      password: this.password,
+      sessionId: 'botio-shared-0',
+    };
+  }
+
   toString() {
     const proxy = this.getProxy();
     if (!proxy) return 'direct (pas de proxy)';
