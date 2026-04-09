@@ -24,11 +24,15 @@ class ChatBot {
     // and redirects to '/' if not set. This prevents that redirect.
     // Also disable "prefer same country" which limits the user pool.
     await this.page.evaluateOnNewDocument(() => {
-      sessionStorage.setItem('userAgreement', 'true');
-      // Disable "prefer people from my country" option
-      localStorage.setItem('preferSameCountry', 'false');
-      localStorage.setItem('sameCountry', 'false');
-      localStorage.setItem('prefer_same_country', 'false');
+      // Guard: skip on Chrome error pages (e.g. ERR_NO_SUPPORTED_PROXIES)
+      if (location.protocol === 'chrome-error:' || location.protocol === 'about:') return;
+      try {
+        sessionStorage.setItem('userAgreement', 'true');
+        // Disable "prefer people from my country" option
+        localStorage.setItem('preferSameCountry', 'false');
+        localStorage.setItem('sameCountry', 'false');
+        localStorage.setItem('prefer_same_country', 'false');
+      } catch (e) { /* storage not available on this page */ }
     });
 
     // Non-blocking goto — CF challenge may stall load event
@@ -46,6 +50,12 @@ class ChatBot {
       // 502 = backend down
       if (title.includes('502') || title.includes('Bad Gateway')) {
         throw new Error('SERVER_502');
+      }
+
+      // Chrome error page = proxy/network failure
+      const currentUrl = this.page.url();
+      if (currentUrl.startsWith('chrome-error:') || title.includes("can't be reached") || title.includes('ERR_')) {
+        throw new Error('PROXY_ERROR: Chrome error page — check proxy credentials');
       }
 
       // CF bypass confirmed when #agree-btn is present in DOM.

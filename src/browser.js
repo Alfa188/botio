@@ -26,9 +26,23 @@ class BrowserManager {
 
     if (this._proxyUrl) {
       // proxy-chain: local anonymous proxy removes auth challenge (avoids CDP hang)
-      this._localProxy = await ProxyChain.anonymizeProxy(this._proxyUrl);
-      args.push(`--proxy-server=${this._localProxy}`);
-      logger.info(`Using proxy: ${this._localProxy}`);
+      // Test connectivity first to give a clear error if credentials are wrong
+      try {
+        this._localProxy = await ProxyChain.anonymizeProxy(this._proxyUrl);
+        // Quick TCP test to confirm local proxy started
+        await new Promise((resolve, reject) => {
+          const net = require('net');
+          const url = new URL(this._localProxy);
+          const sock = net.createConnection({ host: url.hostname, port: parseInt(url.port) }, resolve);
+          sock.on('error', reject);
+          setTimeout(() => { sock.destroy(); resolve(); }, 1000);
+        });
+        args.push(`--proxy-server=${this._localProxy}`);
+        logger.info(`Using proxy: ${this._localProxy}`);
+      } catch (e) {
+        logger.warn(`Proxy setup failed (${e.message}) — falling back to direct connection`);
+        this._localProxy = null;
+      }
     }
 
     this.browser = await puppeteer.launch({
