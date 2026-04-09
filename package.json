@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "pool": "MODE=pool WORKERS=15 node index.js",
+    "pool": "MODE=pool WORKERS=22 node index.js",
     "pool15": "MODE=pool WORKERS=15 node index.js",
     "pool-noproxy": "NO_PROXY=1 MODE=pool WORKERS=5 node index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
