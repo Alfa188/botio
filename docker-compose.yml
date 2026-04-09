@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  botio:
+    build: .
+    restart: unless-stopped
+    environment:
+      - TARGET_URL=https://omegleweb.io
+      - MAX_CHATS=1000
+    tmpfs:
+      - /tmp
+    shm_size: '256mb'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

@@ -4,8 +4,6 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "discover": "node index.js --discover",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -21,13 +19,13 @@
   },
   "homepage": "https://github.com/Alfa188/botio#readme",
   "dependencies": {
-    "axios": "^1.14.0",
-    "cheerio": "^1.2.0",
     "dotenv": "^17.4.1",
     "https-proxy-agent": "^9.0.0",
     "puppeteer": "^24.40.0",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "puppeteer-real-browser": "^1.4.4",
+    "rebrowser-puppeteer-core": "^24.8.1",
     "winston": "^3.19.0",
     "ws": "^8.20.0"
   }
