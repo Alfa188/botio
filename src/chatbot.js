@@ -389,7 +389,7 @@ class ChatBot {
 
       // Chat loop within a session
       let chatRetries = 0;
-      while (this.running && this.chatCount < maxChatsPerSession) {
+      while (this.running && (maxChatsPerSession === 0 || this.chatCount < maxChatsPerSession)) {
         try {
           if (!this.bm.isAlive()) throw new Error('BROWSER_CRASH');
           await this.runSingleChat();
@@ -414,7 +414,7 @@ class ChatBot {
 
       await this.bm.close();
 
-      if (this.chatCount >= maxChatsPerSession) {
+      if (maxChatsPerSession > 0 && this.chatCount >= maxChatsPerSession) {
         logger.info('Max chats reached');
         break;
       }

@@ -47,8 +47,8 @@ module.exports = {
   },
 
   bot: {
-    maxChatsPerSession: parseInt(process.env.MAX_CHATS, 10) || 100,
-    maxRetries: 3,
-    maxSessionRetries: 10,       // full session restarts
+    maxChatsPerSession: parseInt(process.env.MAX_CHATS, 10) || 0,  // 0 = illimité
+    maxRetries: 10,          // erreurs consécutives avant restart session
+    maxSessionRetries: 999,  // redémarrages max (quasi-illimité)
   },
 };
