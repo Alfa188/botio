@@ -1,4 +1,5 @@
 const puppeteer = require('rebrowser-puppeteer-core');
+const ProxyChain = require('proxy-chain');
 const config = require('./config');
 const logger = require('./logger');
 
@@ -11,13 +12,21 @@ async function getCredentials(session) {
   const via = NO_PROXY ? 'direct' : `${session.host}:${session.port}`;
   logger.info(`[CF:${session.id}] Launching Chrome via ${via}`);
 
+  // proxy-chain: create a local anonymous proxy → forwards to Geonode with credentials.
+  // Chrome connects to localhost (no 407 challenge → no CDP hang).
+  let localProxyUrl = null;
+  if (!NO_PROXY) {
+    localProxyUrl = await ProxyChain.anonymizeProxy(session.url);
+    logger.info(`[CF:${session.id}] Local proxy: ${localProxyUrl}`);
+  }
+
   const chromeArgs = [
     '--no-sandbox',
     '--disable-setuid-sandbox',
     '--disable-blink-features=AutomationControlled',
     '--disable-dev-shm-usage',
   ];
-  if (!NO_PROXY) chromeArgs.push(`--proxy-server=${session.host}:${session.port}`);
+  if (!NO_PROXY) chromeArgs.push(`--proxy-server=${localProxyUrl}`);
 
   const browser = await puppeteer.launch({
     executablePath: config.browser.chromePath,
@@ -33,10 +42,6 @@ async function getCredentials(session) {
     logger.info(`[CF:${session.id}] Got ${pages.length} pages`);
     const page = pages[0] || await browser.newPage();
     logger.info(`[CF:${session.id}] Page ready`);
-
-    if (!NO_PROXY) {
-      await page.authenticate({ username: session.user, password: session.pass });
-    }
 
     page.setDefaultTimeout(30000);
     await page.setViewport({ width: 1280, height: 800 });
@@ -139,6 +144,9 @@ async function getCredentials(session) {
 
   } finally {
     await browser.close();
+    if (localProxyUrl) {
+      await ProxyChain.closeAnonymizedProxy(localProxyUrl, true).catch(() => {});
+    }
   }
 }
 
