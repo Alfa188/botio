@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
+    "pool": "NO_PROXY=1 MODE=pool WORKERS=5 node index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
