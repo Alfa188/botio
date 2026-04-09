@@ -1,6 +1,6 @@
 const logger = require('./src/logger');
 
-// MODE=pool  → hybrid WS worker pool (low RAM, scales to 40-100+ sessions)
+// MODE=pool  → N parallel Chrome bots, each with own proxy (scales to 20-40 sessions)
 // MODE=single → single Chrome bot (default, no proxy required)
 const MODE = process.env.MODE || 'single';
 const WORKERS = parseInt(process.env.WORKERS || '5');

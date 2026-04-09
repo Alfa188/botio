@@ -5,8 +5,8 @@ const BrowserManager = require('./browser');
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 class ChatBot {
-  constructor() {
-    this.bm = new BrowserManager();
+  constructor(proxyUrl = null) {
+    this.bm = new BrowserManager(proxyUrl);
     this.page = null;
     this.chatCount = 0;
     this.successCount = 0;
@@ -43,13 +43,19 @@ class ChatBot {
         throw new Error('SERVER_502');
       }
 
-      // CF cleared when title no longer contains CF challenge text
-      const isCF = title.includes('moment') || title.includes('Just') ||
-                    title.includes('Checking') || title.length === 0;
-      if (!isCF) {
-        logger.info(`CF bypassed on attempt ${i}: "${title}"`);
-        return;
-      }
+      // CF bypass confirmed when #agree-btn is present in DOM.
+      // Title-based detection is unreliable with proxy (CF may show a custom
+      // branded page with title "omegleweb.io" instead of "Just a moment...").
+      try {
+        const found = await Promise.race([
+          this.page.evaluate(() => !!document.querySelector('#agree-btn')),
+          new Promise(r => setTimeout(() => r(false), 2000)),
+        ]);
+        if (found) {
+          logger.info(`CF bypassed on attempt ${i}: "${title}"`);
+          return;
+        }
+      } catch (e) { /* page not ready yet */ }
 
       logger.info(`CF attempt ${i}/${config.timing.cfMaxAttempts}: "${title}"`);
 

@@ -1,12 +1,25 @@
 require('dotenv').config();
 
+// Auto-detect Chrome: env override → puppeteer bundled → system Chrome (Mac/Linux)
+function detectChrome() {
+  if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
+  try {
+    // puppeteer auto-downloads a compatible Chrome at install time
+    return require('puppeteer').executablePath();
+  } catch {}
+  // Fallback: system Chrome on Mac
+  const { execSync } = require('child_process');
+  try { execSync('which "Google Chrome"'); return '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'; } catch {}
+  return '/usr/bin/google-chrome';
+}
+
 module.exports = {
   target: {
     url: process.env.TARGET_URL || 'https://omegleweb.io',
   },
 
   browser: {
-    chromePath: process.env.CHROME_PATH || '/home/codespace/.cache/puppeteer/chrome/linux-146.0.7680.153/chrome-linux64/chrome',
+    chromePath: detectChrome(),
     headless: false,
     viewport: { width: 1280, height: 800 },
     protocolTimeout: 300000,

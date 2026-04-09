@@ -72,8 +72,11 @@ async function getCredentials(session) {
         throw new Error('SERVER_502');
       }
 
-      const isCF = title.includes('moment') || title.includes('Just') ||
-                   title.includes('Checking') || title.length === 0;
+      // CF cleared only when title is the real site title (not generic domain or CF message)
+      const isCF = title.length === 0 ||
+                   title === 'omegleweb.io' ||
+                   title.includes('moment') || title.includes('Just') ||
+                   title.includes('Checking') || title.includes('Attention Required');
       if (!isCF) {
         logger.info(`[CF:${session.id}] Bypassed on attempt ${i}: "${title}"`);
         break;
