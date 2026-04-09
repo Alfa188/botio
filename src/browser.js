@@ -7,8 +7,8 @@ class BrowserManager {
   constructor(proxyUrl = null) {
     this.browser = null;
     this.page = null;
-    this._proxyUrl = proxyUrl;       // e.g. "http://user:pass@host:port"
-    this._localProxy = null;         // anonymized proxy-chain URL
+    this._proxyUrl = proxyUrl;   // e.g. "http://user:pass@host:port"
+    this._localProxy = null;     // anonymized proxy-chain URL
   }
 
   async launch() {
@@ -25,23 +25,19 @@ class BrowserManager {
     ];
 
     if (this._proxyUrl) {
-      // proxy-chain: local anonymous proxy removes auth challenge (avoids CDP hang)
-      // Test connectivity first to give a clear error if credentials are wrong
+      // proxy-chain creates a local anon proxy (removes auth challenge from Chrome).
+      // We test CONNECT before launching Chrome so we never get ERR_NO_SUPPORTED_PROXIES.
       try {
         this._localProxy = await ProxyChain.anonymizeProxy(this._proxyUrl);
-        // Quick TCP test to confirm local proxy started
-        await new Promise((resolve, reject) => {
-          const net = require('net');
-          const url = new URL(this._localProxy);
-          const sock = net.createConnection({ host: url.hostname, port: parseInt(url.port) }, resolve);
-          sock.on('error', reject);
-          setTimeout(() => { sock.destroy(); resolve(); }, 1000);
-        });
+        await this._testProxy(this._localProxy);
         args.push(`--proxy-server=${this._localProxy}`);
         logger.info(`Using proxy: ${this._localProxy}`);
       } catch (e) {
-        logger.warn(`Proxy setup failed (${e.message}) — falling back to direct connection`);
-        this._localProxy = null;
+        logger.warn(`Proxy unreachable (${e.message}) — launching direct`);
+        if (this._localProxy) {
+          await ProxyChain.closeAnonymizedProxy(this._localProxy, true).catch(() => {});
+          this._localProxy = null;
+        }
       }
     }
 
@@ -61,6 +57,25 @@ class BrowserManager {
 
     logger.info('Browser launched');
     return this.page;
+  }
+
+  // Verify proxy can tunnel HTTPS via HTTP CONNECT before Chrome uses it
+  async _testProxy(localProxyUrl) {
+    return new Promise((resolve, reject) => {
+      const net = require('net');
+      const url = new URL(localProxyUrl);
+      const sock = net.createConnection({ host: url.hostname, port: parseInt(url.port) }, () => {
+        sock.write('CONNECT omegleweb.io:443 HTTP/1.1\r\nHost: omegleweb.io:443\r\n\r\n');
+        sock.once('data', (data) => {
+          const res = data.toString();
+          sock.destroy();
+          if (res.includes('200')) resolve();
+          else reject(new Error(`Proxy CONNECT failed: ${res.split('\r\n')[0]}`));
+        });
+      });
+      sock.on('error', reject);
+      setTimeout(() => { sock.destroy(); reject(new Error('Proxy test timeout')); }, 8000);
+    });
   }
 
   async close() {

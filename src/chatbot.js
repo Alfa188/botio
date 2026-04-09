@@ -55,7 +55,7 @@ class ChatBot {
       // Chrome error page = proxy/network failure
       const currentUrl = this.page.url();
       if (currentUrl.startsWith('chrome-error:') || title.includes("can't be reached") || title.includes('ERR_')) {
-        throw new Error('PROXY_ERROR: Chrome error page — check proxy credentials');
+        throw new Error('NETWORK_ERROR: Cannot reach target site');
       }
 
       // CF bypass confirmed when #agree-btn is present in DOM.
