@@ -22,8 +22,13 @@ class ChatBot {
     // Set sessionStorage BEFORE page scripts run.
     // chat.js configureChat() checks sessionStorage('userAgreement') === 'true'
     // and redirects to '/' if not set. This prevents that redirect.
+    // Also disable "prefer same country" which limits the user pool.
     await this.page.evaluateOnNewDocument(() => {
       sessionStorage.setItem('userAgreement', 'true');
+      // Disable "prefer people from my country" option
+      localStorage.setItem('preferSameCountry', 'false');
+      localStorage.setItem('sameCountry', 'false');
+      localStorage.setItem('prefer_same_country', 'false');
     });
 
     // Non-blocking goto — CF challenge may stall load event
