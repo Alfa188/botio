@@ -276,12 +276,16 @@ class ChatBot {
 
   async sendMessage() {
     const greeting = config.greetings[Math.floor(Math.random() * config.greetings.length)];
-    const promo = config.promos[Math.floor(Math.random() * config.promos.length)];
+    const [part1, part2] = config.getPromoSplit();
     logger.info(`Chat #${this.chatCount}: greeting="${greeting}"`);
 
     await this._sendWithTyping(greeting);
     await sleep(config.timing.betweenMessagesDelay);
-    await this._sendWithTyping(promo);
+    await this._sendWithTyping(part1);
+    if (part2) {
+      await sleep(config.timing.betweenMessagesDelay);
+      await this._sendWithTyping(part2);
+    }
 
     this.successCount++;
     logger.info(`Messages sent! (Total: ${this.successCount})`);

@@ -159,13 +159,17 @@ class WsWorker {
       if (!this.running) break;
       logger.info(`[W${this.id}] Stranger connected!`);
 
-      // Pick random greeting + promo
+      // Pick random greeting + split promo (site name never complete in one message)
       const greeting = config.greetings[Math.floor(Math.random() * config.greetings.length)];
-      const promo = config.promos[Math.floor(Math.random() * config.promos.length)];
+      const [part1, part2] = config.getPromoSplit();
 
       await this._sendWithTyping(greeting);
       await sleep(config.timing.betweenMessagesDelay);
-      await this._sendWithTyping(promo);
+      await this._sendWithTyping(part1);
+      if (part2) {
+        await sleep(config.timing.betweenMessagesDelay);
+        await this._sendWithTyping(part2);
+      }
 
       this.successCount++;
       logger.info(`[W${this.id}] Messages sent (total: ${this.successCount})`);

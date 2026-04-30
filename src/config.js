@@ -13,6 +13,42 @@ function detectChrome() {
   return '/usr/bin/google-chrome';
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Promo messages – rotation constante sur 5 liens pour éviter les bans.
+// Chaque appel à getPromoSplit() avance d'un cran dans la liste (round-robin)
+// ET choisit un template différent, donc lien + texte changent ensemble.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const _promoLinks = [
+  'https://rb.gy/veav64',
+  'https://rb.gy/1p9xzh',
+  'https://rb.gy/fvr8pm',
+  'https://rb.gy/gv2t19',
+];
+
+const _promoTemplates = [
+  (l) => `everyone here is just guys lol found a better site with actual girls → ${l}`,
+  (l) => `ngl this place is dead, everyone moved here → ${l}`,
+  (l) => `if u wanna actually meet new people try this instead ${l} way better`,
+  (l) => `bro this site is cooked 😭 found smth way better → ${l}`,
+  (l) => `less creeps, more real convos, way more girls : ${l} just saying`,
+  (l) => `my friend showed me this and its 10x better than here ${l}`,
+  (l) => `if ur tired of skipping try this ${l} actually good`,
+  (l) => `dont waste time here tbh ${l} hits different 🙏`,
+];
+
+let _linkIndex = 0;
+let _templateIndex = 0;
+
+function getPromoSplit() {
+  // Indices indépendants : 8 templates × 4 liens = 32 combinaisons uniques
+  const link = _promoLinks[_linkIndex % _promoLinks.length];
+  const template = _promoTemplates[_templateIndex % _promoTemplates.length];
+  _linkIndex = (_linkIndex + 1) % _promoLinks.length;
+  _templateIndex = (_templateIndex + 1) % _promoTemplates.length;
+  return [template(link), null];
+}
+
 module.exports = {
   target: {
     url: process.env.TARGET_URL || 'https://omegleweb.io',
@@ -27,16 +63,7 @@ module.exports = {
 
   greetings: ['sup', 'hi', 'hey', 'heyyy', 'hii', 'yo', 'f', 'F', 'hey :)', 'hi :)'],
 
-  promos: [
-    'everyone here is male lol.. omefree.com has way more girls just saying',
-    'omefree.com > this 😭',
-    'ngl omefree.com is way better for actually meeting people',
-    'this site is dead rn.. omefree.com is where everyone moved to',
-    'omefree.com actually has girls on it, way better if u wanna meet new people',
-    'if u tryna vibe and make friends omefree.com is way better ngl 🙏',
-    'if u want real convos not just creeps try omefree.com',
-    'omefree.com is way less weird if u just wanna chat and meet ppl',
-  ],
+  getPromoSplit,
 
   timing: {
     cfMaxAttempts: 25,             // CF bypass attempts
