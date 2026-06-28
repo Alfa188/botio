@@ -94,6 +94,8 @@ class ChatBot {
   // STEP 2: Wait for DOM to be ready (chat.js loaded).
   //   WS is created at page load and connects async (~4s).
   //   configureChat() registers agree-btn listener after WS opens.
+  //   The site now shows an Omezy redirect card that must be
+  //   dismissed before the agree button becomes functional.
   //   clickAgreeAndMatch() handles WS timing via retry loop.
   // ──────────────────────────────────────────────────────────
   async waitForReady() {
@@ -104,6 +106,51 @@ class ChatBot {
       await sleep(2000);
     } catch (e) {
       throw new Error('Chat page timeout — #agree-btn never appeared');
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────
+  // STEP 2.5: Dismiss the Omezy redirect card.
+  //   The site now injects a promotional card (#omezy-card)
+  //   inside #messages that must be dismissed before the
+  //   agree button works. Click "Continue on OmegleWeb.io"
+  //   to close it.
+  // ──────────────────────────────────────────────────────────
+  async dismissOmezyCard() {
+    try {
+      const stayBtn = await Promise.race([
+        this.page.waitForSelector('#omezy-stay-link', { timeout: 8000, visible: true }),
+        new Promise(r => setTimeout(() => r(null), 8000)),
+      ]);
+      if (stayBtn) {
+        logger.info('Omezy card detected — dismissing...');
+        await this.page.click('#omezy-stay-link');
+        // Wait for the card to be removed from DOM
+        await sleep(2000);
+        // Verify it's gone
+        try {
+          await this.page.waitForSelector('#omezy-card', { timeout: 5000, hidden: true });
+          logger.info('Omezy card dismissed');
+        } catch (e) {
+          logger.warn('Omezy card still present after dismiss click');
+        }
+      } else {
+        logger.info('No Omezy card found (may already be dismissed or not present)');
+      }
+
+      // Uncheck "prefer people from my country" checkbox if present
+      try {
+        await this.page.evaluate(() => {
+          const cb = document.querySelector('#country-preference-checkbox');
+          if (cb && cb.checked) {
+            cb.checked = false;
+            cb.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        });
+      } catch (e) { /* ignore */ }
+    } catch (e) {
+      logger.warn('Omezy card dismissal: ' + e.message);
+      // Non-fatal — proceed even if dismissal fails
     }
   }
 
@@ -132,7 +179,8 @@ class ChatBot {
     throw new Error('AGREE_FAILED — match never initiated after ' + MAX_CLICKS + ' clicks');
   }
 
-  // Check if #messages has left the initial welcome state
+  // Check if #messages has left the initial welcome state.
+  // Must be clear of both the Omezy card AND the starMsg welcome.
   async _waitForMatchStart(timeout) {
     const start = Date.now();
     while (Date.now() - start < timeout) {
@@ -142,9 +190,9 @@ class ChatBot {
             const msgs = document.querySelector('#messages');
             if (!msgs) return false;
             const html = msgs.innerHTML;
-            // Initial welcome state contains "starMsg" div
+            // Initial welcome state contains "starMsg" div AND/OR "omezy-card"
             // Once initializeConnection() runs, it replaces innerHTML with "Looking..."
-            return !html.includes('starMsg') && html.length > 0;
+            return !html.includes('starMsg') && !html.includes('omezy-card') && html.length > 0;
           }),
           new Promise((_, rej) => setTimeout(() => rej('timeout'), 3000)),
         ]);
@@ -350,6 +398,7 @@ class ChatBot {
     this.page = await this.bm.launch();
     await this.initPage();
     await this.waitForReady();
+    await this.dismissOmezyCard();
     await this.clickAgreeAndMatch();
     logger.info('Session initialized — entering chat loop');
   }

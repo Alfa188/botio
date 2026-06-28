@@ -106,12 +106,43 @@ async function getCredentials(session) {
     await page.waitForSelector('#agree-btn', { timeout: config.timing.wsReadyTimeout });
     await sleep(2000); // wait for WS to fully init before clicking
 
+    // Dismiss Omezy redirect card if present (same logic as chatbot.js)
+    try {
+      const stayBtn = await Promise.race([
+        page.waitForSelector('#omezy-stay-link', { timeout: 8000, visible: true }),
+        new Promise(r => setTimeout(() => r(null), 8000)),
+      ]);
+      if (stayBtn) {
+        logger.info(`[CF:${session.id}] Omezy card detected — dismissing...`);
+        await page.click('#omezy-stay-link');
+        await sleep(2000);
+        try {
+          await page.waitForSelector('#omezy-card', { timeout: 5000, hidden: true });
+          logger.info(`[CF:${session.id}] Omezy card dismissed`);
+        } catch (e) {
+          logger.warn(`[CF:${session.id}] Omezy card still present after dismiss click`);
+        }
+      }
+      // Uncheck country preference checkbox
+      try {
+        await page.evaluate(() => {
+          const cb = document.querySelector('#country-preference-checkbox');
+          if (cb && cb.checked) {
+            cb.checked = false;
+            cb.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        });
+      } catch (e) {}
+    } catch (e) {
+      logger.warn(`[CF:${session.id}] Omezy card dismissal: ${e.message}`);
+    }
+
     // Click agree button + wait for match to start (same retry logic as chatbot.js)
     // This sets server-side session state required by the WS server.
     logger.info(`[CF:${session.id}] Clicking agree-btn to register session...`);
     for (let i = 1; i <= 8; i++) {
       try { await page.click('#agree-btn'); } catch {}
-      // Wait up to 6s for starMsg to disappear (match initiated)
+      // Wait up to 6s for starMsg and omezy-card to disappear (match initiated)
       const started = await (async () => {
         const end = Date.now() + 6000;
         while (Date.now() < end) {
@@ -119,7 +150,7 @@ async function getCredentials(session) {
             const gone = await page.evaluate(() => {
               const msgs = document.querySelector('#messages');
               if (!msgs) return false;
-              return !msgs.innerHTML.includes('starMsg') && msgs.innerHTML.length > 0;
+              return !msgs.innerHTML.includes('starMsg') && !msgs.innerHTML.includes('omezy-card') && msgs.innerHTML.length > 0;
             });
             if (gone) return true;
           } catch {}
